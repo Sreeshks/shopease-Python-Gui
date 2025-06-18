@@ -1,0 +1,40 @@
+{
+    "Yuvarani foot wears": {
+        "Location": "G6G8+4XM, Palace Rd, Keerankulangara, Thrissur, Kerala 680001",
+        "Products": {
+            "Nike": {
+                "stock": 10,
+                "Price": 1000,
+                "Sizes": [
+                    7,
+                    8,
+                    9,
+                    10
+                ],
+                "Category": "Sneakers"
+            },
+            "New Balance": {
+                "stock": 8,
+                "Price": 2400,
+                "Sizes": [
+                    6,
+                    7,
+                    8,
+                    9,
+                    10
+                ],
+                "Category": "Sneakers"
+            },
+            "Puma": {
+                "stock": 9,
+                "Price": 1499,
+                "Sizes": [
+                    7,
+                    8,
+                    9
+                ],
+                "Category": "Sneakers"
+            }
+        }
+    }
+}
