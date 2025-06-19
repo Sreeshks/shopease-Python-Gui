@@ -24,10 +24,35 @@ class ShopEaseUI:
         self.email_handler = EmailHandler(self.root, self.create_main_menu)
         self.setup_styles()
         self.setup_menu()
-        self.main_frame = ttk.Frame(self.root, padding=30, style="Frame.TFrame")
-        self.main_frame.pack(fill="both", expand=True)
+
+        # --- SCROLLABLE MAIN FRAME SETUP ---
+        self.container = ttk.Frame(self.root, style="Frame.TFrame")
+        self.container.place(relx=0.5, rely=0.5, anchor="center", width=600, height=500)
+
+        self.canvas = tk.Canvas(self.container, borderwidth=0, highlightthickness=0, bg=self.colors["background"])
+        self.scrollbar = ttk.Scrollbar(self.container, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas, style="Frame.TFrame")
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(
+                scrollregion=self.canvas.bbox("all")
+            )
+        )
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+        # --- END SCROLLABLE MAIN FRAME SETUP ---
+
         self.show_splash()
         self.setup_system_tray()
+
+        # --- Persistent Back Button ---
+        self.back_button = ttk.Button(self.root, text="Back", style="TButton")
+        self.back_button.place(relx=0.5, rely=0.97, anchor="s", width=120)
+        self.back_button.lower()  # Hide by default
 
     def setup_styles(self):
         """Configure UI styles."""
@@ -95,9 +120,9 @@ class ShopEaseUI:
     def refresh_ui(self):
         """Refresh UI to apply theme changes."""
         self.root.configure(bg=self.colors["background"])
-        for widget in self.main_frame.winfo_children():
+        for widget in self.scrollable_frame.winfo_children():
             widget.configure(style=widget.cget("style"))
-        self.main_frame.configure(style="Frame.TFrame")
+        self.scrollable_frame.configure(style="Frame.TFrame")
 
     def setup_menu(self):
         """Setup menu bar."""
@@ -107,6 +132,7 @@ class ShopEaseUI:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="New", command=self.create_main_menu)
+        file_menu.add_command(label="Logout", command=self.logout)
         file_menu.add_command(label="Exit", command=self.root.quit)
 
         edit_menu = tk.Menu(menubar, tearoff=0)
@@ -116,6 +142,10 @@ class ShopEaseUI:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About", command=self.show_about)
+
+    def logout(self):
+        self.current_user = None
+        self.create_main_menu()
 
     def setup_system_tray(self):
         """Setup system tray icon (simplified for Tkinter)."""
@@ -145,10 +175,11 @@ class ShopEaseUI:
 
     def clear_frame(self):
         """Clear the main frame."""
-        for widget in self.main_frame.winfo_children():
+        for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
         self.buttons = []
         self.current_button_index = 0
+        self.set_back_button(show=False)
 
     def create_button(self, parent, text, command, width=None):
         btn = ttk.Button(parent, text=text, command=command, width=width, style="TButton")
@@ -190,14 +221,53 @@ class ShopEaseUI:
 
     def create_main_menu(self):
         self.clear_frame()
-        header_frame = ttk.Frame(self.main_frame, style="Frame.TFrame")
+        # The container and canvas are already centered and sized
+        self.container.place(relx=0.5, rely=0.5, anchor="center", width=600, height=500)
+        self.container.configure(style="Frame.TFrame", borderwidth=2, relief="groove")
+        self.canvas.configure(bg=self.colors["background"])
+        self.scrollable_frame.configure(style="Frame.TFrame")
+
+        # Global search bar at the top (fixed)
+        search_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
+        search_frame.pack(pady=(10, 20), padx=30, fill="x")
+        search_entry = ttk.Entry(search_frame, font=("Segoe UI", 12), style="TEntry")
+        search_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        search_button = ttk.Button(search_frame, text="Search", style="TButton")
+        search_button.pack(side="left")
+
+        def do_global_search():
+            query = search_entry.get().strip().lower()
+            if not query:
+                messagebox.showinfo("Search", "Please enter a search term.")
+                return
+            # Search products and shops
+            results = []
+            for shop, shop_data in self.data_handler.shops.items():
+                if query in shop.lower():
+                    results.append(f"Shop: {shop}\nLocation: {shop_data['Location']}")
+                for product, pdata in shop_data["Products"].items():
+                    if query in product.lower():
+                        results.append(f"Product: {product}\nShop: {shop}\nStock: {pdata['stock']}\nPrice: ₹{pdata['Price']}\nSizes: {pdata['Sizes']}")
+            if results:
+                result_text = "\n\n".join(results)
+            else:
+                result_text = "No matching products or shops found."
+            messagebox.showinfo("Search Results", result_text)
+
+        search_button.config(command=do_global_search)
+        search_entry.bind('<Return>', lambda e: do_global_search())
+
+        # Header
+        header_frame = ttk.Frame(self.scrollable_frame, style="Frame.TFrame")
         header_frame.pack(fill="x", pady=(0, 20))
-        ttk.Label(header_frame, text="ShopEase", style="Title.TLabel").pack(anchor="center")
+        ttk.Label(header_frame, text="ShopEase", style="Title.TLabel", font=("Segoe UI", 32, "bold")).pack(anchor="center")
 
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        # Content frame (centered, modern look)
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
-
-        ttk.Label(content_frame, text="Welcome to ShopEase", style="Subtitle.TLabel").pack(pady=(20, 10))
+        content_frame.configure(borderwidth=2, relief="ridge")
+        content_frame.pack_propagate(False)
+        ttk.Label(content_frame, text="Welcome to ShopEase", style="Subtitle.TLabel", font=("Segoe UI", 16, "bold")).pack(pady=(20, 10))
 
         buttons = [
             ("Shopkeeper", self.shopkeeper_menu),
@@ -206,39 +276,39 @@ class ShopEaseUI:
             ("Send Mail to Developer", self.email_handler.send_mail_window),
             ("Exit", self.root.quit)
         ]
-
         for text, command in buttons:
             self.create_button(content_frame, text, command)
-
         self.setup_button_navigation()
         if self.buttons:
             self.buttons[0].focus_set()
 
+        self.set_back_button(show=False)
+
     def shopkeeper_menu(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Shopkeeper Menu", style="Subtitle.TLabel").pack(pady=(20, 10))
 
         self.create_button(content_frame, "Sign-up", self.admin_signup_window)
         self.create_button(content_frame, "Login", self.admin_login_window)
-        self.create_button(content_frame, "Back", self.create_main_menu)
+        self.set_back_button(self.create_main_menu, show=True)
 
     def user_menu(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="User Menu", style="Subtitle.TLabel").pack(pady=(20, 10))
 
         self.create_button(content_frame, "Sign-up", self.user_signup_window)
         self.create_button(content_frame, "Login", self.user_login_window)
-        self.create_button(content_frame, "Back", self.create_main_menu)
+        self.set_back_button(self.create_main_menu, show=True)
 
     def admin_signup_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Admin Sign-up", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -297,11 +367,11 @@ class ShopEaseUI:
         button_frame = ttk.Frame(content_frame)
         button_frame.pack(pady=20, fill="x")
         self.create_button(button_frame, "Submit", submit, width=15)
-        self.create_button(button_frame, "Back", self.shopkeeper_menu, width=15)
+        self.set_back_button(self.shopkeeper_menu, show=True)
 
     def admin_login_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Admin Login", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -370,11 +440,11 @@ class ShopEaseUI:
         button_frame = ttk.Frame(content_frame)
         button_frame.pack(pady=20, fill="x")
         self.create_button(button_frame, "Login", submit, width=15)
-        self.create_button(button_frame, "Back", self.shopkeeper_menu, width=15)
+        self.set_back_button(self.shopkeeper_menu, show=True)
 
     def user_signup_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="User Sign-up", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -416,11 +486,11 @@ class ShopEaseUI:
         button_frame = ttk.Frame(content_frame)
         button_frame.pack(pady=20, fill="x")
         self.create_button(button_frame, "Submit", submit, width=15)
-        self.create_button(button_frame, "Back", self.user_menu, width=15)
+        self.set_back_button(self.user_menu, show=True)
 
     def user_login_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="User Login", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -449,11 +519,11 @@ class ShopEaseUI:
         button_frame = ttk.Frame(content_frame)
         button_frame.pack(pady=20, fill="x")
         self.create_button(button_frame, "Login", submit, width=15)
-        self.create_button(button_frame, "Back", self.user_menu, width=15)
+        self.set_back_button(self.user_menu, show=True)
 
     def admin_panel(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Admin Panel", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -471,9 +541,11 @@ class ShopEaseUI:
         for text, command in buttons:
             self.create_button(content_frame, text, command)
 
+        self.set_back_button(self.shopkeeper_menu, show=True)
+
     def user_panel(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="User Panel", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -490,9 +562,11 @@ class ShopEaseUI:
         for text, command in buttons:
             self.create_button(content_frame, text, command)
 
+        self.set_back_button(self.user_menu, show=True)
+
     def add_products_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Add Products", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -591,11 +665,11 @@ class ShopEaseUI:
         button_frame = ttk.Frame(content_frame)
         button_frame.pack(pady=20, fill="x")
         self.create_button(button_frame, "Add Product", add_product, width=15)
-        self.create_button(button_frame, "Done", self.admin_panel, width=15)
+        self.set_back_button(self.admin_panel, show=True)
 
     def delete_product_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Delete Product", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -634,11 +708,11 @@ class ShopEaseUI:
         button_frame = ttk.Frame(content_frame)
         button_frame.pack(pady=20, fill="x")
         self.create_button(button_frame, "Delete", delete, width=15)
-        self.create_button(button_frame, "Back", self.admin_panel, width=15)
+        self.set_back_button(self.admin_panel, show=True)
 
     def update_product_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Update Product", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -734,10 +808,7 @@ class ShopEaseUI:
         shop_name_entry.bind('<Return>', on_shop_name_enter)
         product_name_entry.bind('<Return>', on_product_name_enter)
 
-        button_frame = ttk.Frame(content_frame)
-        button_frame.pack(pady=20, fill="x")
-        self.create_button(button_frame, "Check Product", check_product, width=15)
-        self.create_button(button_frame, "Back", self.admin_panel, width=15)
+        self.set_back_button(self.admin_panel, show=True)
 
     def get_search_suggestions(self, query: str) -> List[str]:
         query = query.lower()
@@ -819,7 +890,7 @@ class ShopEaseUI:
 
     def search_product_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Search Product", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -882,14 +953,11 @@ class ShopEaseUI:
         product_name_entry.bind('<Return>', on_enter)
         result_text.bind('<Return>', lambda e: product_name_entry.focus_set())
 
-        button_frame = ttk.Frame(content_frame)
-        button_frame.pack(pady=20, fill="x")
-        self.create_button(button_frame, "Search", search, width=15)
-        self.create_button(button_frame, "Back", self.user_panel, width=15)
+        self.set_back_button(self.user_panel, show=True)
 
     def search_by_price_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Search by Price", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -952,14 +1020,11 @@ class ShopEaseUI:
         price_entry.bind('<Return>', on_enter)
         result_text.bind('<Return>', lambda e: price_entry.focus_set())
 
-        button_frame = ttk.Frame(content_frame)
-        button_frame.pack(pady=20, fill="x")
-        self.create_button(button_frame, "Search", search, width=15)
-        self.create_button(button_frame, "Back", self.user_panel, width=15)
+        self.set_back_button(self.user_panel, show=True)
 
     def display_brands(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Available Brands", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -972,11 +1037,11 @@ class ShopEaseUI:
         for brand in brands:
             result_text.insert(tk.END, f"• {brand}\n")
 
-        self.create_button(content_frame, "Back", self.admin_panel if self.main_frame.winfo_children()[0].winfo_children()[0].cget("text") == "Admin Panel" else self.user_panel)
+        self.set_back_button(self.admin_panel if self.scrollable_frame.winfo_children()[0].winfo_children()[0].cget("text") == "Admin Panel" else self.user_panel, show=True)
 
     def shop_details(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Shop Details", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -1053,14 +1118,11 @@ class ShopEaseUI:
 
         shop_name_entry.bind('<Return>', lambda e: search())
 
-        button_frame = ttk.Frame(content_frame)
-        button_frame.pack(pady=20, fill="x")
-        self.create_button(button_frame, "Search", search, width=15)
-        self.create_button(button_frame, "Back", self.admin_panel if self.main_frame.winfo_children()[0].winfo_children()[0].cget("text") == "Admin Panel" else self.user_panel, width=15)
+        self.set_back_button(self.admin_panel if self.scrollable_frame.winfo_children()[0].winfo_children()[0].cget("text") == "Admin Panel" else self.user_panel, show=True)
 
     def contact_info(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Contact Information", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -1081,11 +1143,11 @@ class ShopEaseUI:
             contact_text.insert(tk.END, f"{info}\n")
 
         contact_text.config(state="disabled")
-        self.create_button(content_frame, "Back", self.create_main_menu)
+        self.set_back_button(self.create_main_menu, show=True)
 
     def user_profile_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="User Profile", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -1110,14 +1172,11 @@ class ShopEaseUI:
 
         password_entry.bind('<Return>', lambda e: update_profile())
 
-        button_frame = ttk.Frame(content_frame)
-        button_frame.pack(pady=20, fill="x")
-        self.create_button(button_frame, "Update", update_profile, width=15)
-        self.create_button(button_frame, "Back", self.user_panel, width=15)
+        self.set_back_button(self.user_panel, show=True)
 
     def export_inventory_window(self):
         self.clear_frame()
-        content_frame = ttk.Frame(self.main_frame, style="Card.TFrame")
+        content_frame = ttk.Frame(self.scrollable_frame, style="Card.TFrame")
         content_frame.pack(pady=20, padx=50, fill="both", expand=True)
 
         ttk.Label(content_frame, text="Export Inventory", style="Subtitle.TLabel").pack(pady=(20, 10))
@@ -1148,7 +1207,4 @@ class ShopEaseUI:
         shop_name_entry.bind('<Return>', on_shop_name_enter)
         file_entry.bind('<Return>', on_file_enter)
 
-        button_frame = ttk.Frame(content_frame)
-        button_frame.pack(pady=20, fill="x")
-        self.create_button(button_frame, "Export", export, width=15)
-        self.create_button(button_frame, "Back", self.admin_panel, width=15)
+        self.set_back_button(self.admin_panel, show=True)
